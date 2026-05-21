@@ -1,0 +1,59 @@
+{
+  "$schema": "https://developers.reddit.com/schema/config-file.v1.json",
+  "name": "modmemoryx",
+  "post": {
+    "dir": "dist/client",
+    "entrypoints": {
+      "default": {
+        "entry": "index.html",
+        "height": "tall"
+      }
+    }
+  },
+  "server": {
+    "entry": "dist/server/server/index.js"
+  },
+  "permissions": {
+    "redis": true,
+    "reddit": {
+      "enable": true,
+      "scope": "moderator"
+    }
+  },
+  "menu": {
+    "items": [
+      {
+        "label": "Capture decision memory",
+        "description": "Save a precedent with rule tag, outcome, and explanation template.",
+        "forUserType": "moderator",
+        "location": ["post", "comment"],
+        "endpoint": "/internal/menu/capture-decision"
+      },
+      {
+        "label": "Show decision precedents",
+        "description": "Open the decision memory app for similar prior cases.",
+        "forUserType": "moderator",
+        "location": ["post", "comment", "subreddit"],
+        "endpoint": "/internal/menu/show-precedents"
+      }
+    ]
+  },
+  "forms": {
+    "decisionCapture": "/internal/form/capture-decision-submit"
+  },
+  "triggers": {
+    "onModAction": "/internal/triggers/mod-action"
+  },
+  "scheduler": {
+    "tasks": {
+      "retention-cleanup": {
+        "endpoint": "/internal/scheduler/retention-cleanup",
+        "cron": "0 3 * * *"
+      }
+    }
+  },
+  "scripts": {
+    "build": "npm run devvit:build",
+    "dev": "vite build --watch"
+  }
+}

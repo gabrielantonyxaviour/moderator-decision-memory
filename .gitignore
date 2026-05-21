@@ -1,0 +1,24 @@
+node_modules/
+dist/
+.env
+.env.*
+*.log
+
+# Local execution artifacts, not public project source.
+.Codex/
+logs/
+outputs/
+STATE.json
+AGENTS.md
+GABRIEL_UI_DIRECTION.md
+PROGRESS.md
+TEAM.md
+BUILD_PLAN.md
+SPONSOR_ACCESS_PLAN.md
+API_PLAN.md
+UI_TEMPLATE_PLAN.md
+REPO_PLAN.md
+SUBMISSION_PORTAL_PLAN.md
+EXECUTION_PACKET.md
+bin/
+prompts/

@@ -1,0 +1,35 @@
+{
+  "name": "moderator-decision-memory",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Devvit mod tool that gives Reddit moderators searchable precedent memory for borderline decisions.",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1",
+    "build": "vite build && tsc -p tsconfig.server.json",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit && tsc -p tsconfig.server.json --noEmit",
+    "devvit:build": "vite build && tsc -p tsconfig.server.json",
+    "devvit:playtest": "devvit playtest",
+    "devvit:upload": "devvit upload"
+  },
+  "dependencies": {
+    "@devvit/redis": "0.12.24",
+    "@devvit/web": "0.12.24",
+    "hono": "^4.10.7",
+    "lucide-react": "^0.511.0",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0"
+  },
+  "devDependencies": {
+    "@devvit/start": "0.12.24",
+    "@types/react": "^19.2.7",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^5.1.1",
+    "typescript": "^5.9.3",
+    "vite": "^7.2.7",
+    "vitest": "^4.0.15"
+  },
+  "overrides": {
+    "protobufjs": "7.5.8"
+  }
+}
