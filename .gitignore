@@ -22,3 +22,4 @@ SUBMISSION_PORTAL_PLAN.md
 EXECUTION_PACKET.md
 bin/
 prompts/
+.claude/

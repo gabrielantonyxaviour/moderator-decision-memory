@@ -38,6 +38,8 @@ function App() {
   const [queueId, setQueueId] = React.useState(fixtureQueueItems[0].id);
   const [decisions, setDecisions] = React.useState<DecisionRecord[]>(loadDecisions);
   const [copied, setCopied] = React.useState("");
+  const [actionStatus, setActionStatus] = React.useState("");
+  const [formError, setFormError] = React.useState("");
   const [form, setForm] = React.useState({
     ruleTag: "legal-advice",
     outcome: "escalated" as DecisionOutcome,
@@ -55,25 +57,36 @@ function App() {
 
   function captureDecision(event: React.FormEvent) {
     event.preventDefault();
-    const record = createDecisionRecord({
-      thingId: activeItem.id,
-      thingType: activeItem.thingType,
-      ruleTag: form.ruleTag,
-      outcome: form.outcome,
-      summary: form.summary,
-      template: form.template,
-      keywords: form.keywords,
-      retentionDays: fixtureRetention.days,
-      actorLabel: "demo-mod",
-      source: "manual",
-    });
-    setDecisions((current) => [record, ...current]);
+    setFormError("");
+    try {
+      const record = createDecisionRecord({
+        thingId: activeItem.id,
+        thingType: activeItem.thingType,
+        ruleTag: form.ruleTag,
+        outcome: form.outcome,
+        summary: form.summary,
+        template: form.template,
+        keywords: form.keywords,
+        retentionDays: fixtureRetention.days,
+        actorLabel: "demo-mod",
+        source: "manual",
+      });
+      setDecisions((current) => [record, ...current]);
+      setActionStatus("Decision saved to local demo memory.");
+    } catch (error) {
+      setFormError(error instanceof Error ? error.message : "Decision could not be saved.");
+    }
   }
 
   async function copyTemplate(record: DecisionRecord) {
-    await navigator.clipboard.writeText(record.template);
-    setCopied(record.id);
-    window.setTimeout(() => setCopied(""), 1500);
+    try {
+      await navigator.clipboard.writeText(record.template);
+      setCopied(record.id);
+      setActionStatus("Template copied to clipboard.");
+      window.setTimeout(() => setCopied(""), 1500);
+    } catch {
+      setActionStatus("Clipboard is unavailable in this browser. Select the template text from the card.");
+    }
   }
 
   return (
@@ -160,11 +173,16 @@ function App() {
             </div>
           </article>
 
-          <form className="capture-form" onSubmit={captureDecision}>
+          <form className="capture-form" onSubmit={captureDecision} noValidate>
             <div className="form-row">
               <label>
                 Rule tag
-                <input value={form.ruleTag} onChange={(e) => setForm({ ...form, ruleTag: e.target.value })} />
+                <input
+                  required
+                  maxLength={40}
+                  value={form.ruleTag}
+                  onChange={(e) => setForm({ ...form, ruleTag: e.target.value })}
+                />
               </label>
               <label>
                 Outcome
@@ -182,17 +200,34 @@ function App() {
             </div>
             <label>
               Decision summary
-              <textarea value={form.summary} onChange={(e) => setForm({ ...form, summary: e.target.value })} />
+              <textarea
+                required
+                maxLength={320}
+                value={form.summary}
+                onChange={(e) => setForm({ ...form, summary: e.target.value })}
+              />
             </label>
             <label>
               Explanation template
-              <textarea value={form.template} onChange={(e) => setForm({ ...form, template: e.target.value })} />
+              <textarea
+                required
+                maxLength={420}
+                value={form.template}
+                onChange={(e) => setForm({ ...form, template: e.target.value })}
+              />
             </label>
             <label>
               Match keywords
-              <input value={form.keywords} onChange={(e) => setForm({ ...form, keywords: e.target.value })} />
+              <input
+                required
+                value={form.keywords}
+                onChange={(e) => setForm({ ...form, keywords: e.target.value })}
+              />
             </label>
             <button className="submit-button" type="submit"><Plus size={17} /> Save to memory</button>
+            <div className="form-feedback" aria-live="polite">
+              {formError ? <span className="feedback-error">{formError}</span> : actionStatus}
+            </div>
           </form>
         </section>
 

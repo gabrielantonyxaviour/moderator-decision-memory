@@ -8,6 +8,9 @@
     "build": "vite build && tsc -p tsconfig.server.json",
     "test": "vitest run",
     "typecheck": "tsc --noEmit && tsc -p tsconfig.server.json --noEmit",
+    "e2e:local": "node scripts/e2e-local.mjs",
+    "e2e:api": "node scripts/e2e-api-smoke.mjs",
+    "e2e:auth": "node scripts/devvit-auth-preflight.mjs",
     "devvit:build": "vite build && tsc -p tsconfig.server.json",
     "devvit:playtest": "devvit playtest",
     "devvit:upload": "devvit upload"
@@ -25,6 +28,7 @@
     "@types/react": "^19.2.7",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^5.1.1",
+    "playwright": "^1.60.0",
     "typescript": "^5.9.3",
     "vite": "^7.2.7",
     "vitest": "^4.0.15"

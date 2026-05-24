@@ -195,6 +195,14 @@ input, textarea, select {
   padding: 10px 11px;
 }
 textarea { min-height: 78px; resize: vertical; }
+.form-feedback {
+  min-height: 24px;
+  color: var(--green-2);
+  font-size: 0.82rem;
+  font-weight: 700;
+  line-height: 1.45;
+}
+.feedback-error { color: var(--red); }
 
 .precedent-card {
   border: 1px solid var(--line);

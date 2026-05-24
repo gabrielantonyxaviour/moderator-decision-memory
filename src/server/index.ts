@@ -12,10 +12,32 @@ const app = new Hono();
 const DECISION_HASH = "decisions:index";
 const RETENTION_AUDIT = "audit:retention";
 
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : "Unknown error.";
+}
+
+function storageErrorMessage(error: unknown): string {
+  const message = errorMessage(error);
+  if (message.includes("Devvit config is not available")) {
+    return "Devvit Redis is unavailable outside an initialized Devvit runtime.";
+  }
+  return message;
+}
+
+function parseStoredDecision(value: unknown): DecisionRecord | null {
+  if (typeof value !== "string") return null;
+  try {
+    return JSON.parse(value) as DecisionRecord;
+  } catch {
+    return null;
+  }
+}
+
 async function listDecisions(): Promise<DecisionRecord[]> {
   const stored = await redis.hGetAll(DECISION_HASH);
   return Object.values(stored ?? {})
-    .map((value) => JSON.parse(value as string) as DecisionRecord)
+    .map(parseStoredDecision)
+    .filter((record): record is DecisionRecord => record !== null)
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 }
 
@@ -52,14 +74,31 @@ app.get("/api/demo-state", async (c) => {
 
 app.post("/api/decisions", async (c) => {
   const input = await c.req.json<CaptureFormRequest>();
-  const record = createDecisionRecord(input);
-  await saveDecision(record);
+  let record: DecisionRecord;
+  try {
+    record = createDecisionRecord(input);
+  } catch (error) {
+    return c.json({ error: "Invalid decision input.", detail: errorMessage(error) }, 400);
+  }
+
+  try {
+    await saveDecision(record);
+  } catch (error) {
+    return c.json({ error: "Decision storage unavailable.", detail: storageErrorMessage(error) }, 503);
+  }
+
   return c.json({ record }, 201);
 });
 
 app.post("/api/match", async (c) => {
   const item = await c.req.json<QueueItem>();
-  const decisions = await listDecisions();
+  let decisions: DecisionRecord[];
+  try {
+    decisions = await listDecisions();
+  } catch (error) {
+    return c.json({ error: "Decision storage unavailable.", detail: storageErrorMessage(error) }, 503);
+  }
+
   return c.json({ matches: matchPrecedents(item, decisions, 3) });
 });
 
@@ -99,13 +138,24 @@ app.post("/internal/menu/capture-decision", async (c) => {
 
 app.post("/internal/form/capture-decision-submit", async (c) => {
   const input = await c.req.json<CaptureFormRequest>();
-  const record = createDecisionRecord({
-    ...input,
-    keywords: input.keywords || input.ruleTag,
-    actorLabel: input.actorLabel || "mod-team",
-    source: "manual",
-  });
-  await saveDecision(record);
+  let record: DecisionRecord;
+  try {
+    record = createDecisionRecord({
+      ...input,
+      keywords: input.keywords || input.ruleTag,
+      actorLabel: input.actorLabel || "mod-team",
+      source: "manual",
+    });
+    await saveDecision(record);
+  } catch (error) {
+    return c.json<UiResponse>({
+      showToast: {
+        text: `Decision memory was not saved: ${storageErrorMessage(error)}`,
+        appearance: "neutral",
+      },
+    });
+  }
+
   return c.json<UiResponse>({
     showToast: {
       text: "Decision memory saved for future precedent lookup.",

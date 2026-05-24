@@ -30,7 +30,7 @@ npm install
 npm run dev
 ```
 
-The local preview opens on Vite. The current demo UI is a browser preview of the same decision-memory workflow used by the Devvit app.
+The local preview opens on Vite. The browser preview uses fixture data plus browser `localStorage` so judges can exercise the workflow without Reddit credentials. Redis writes require the app to run inside an initialized Devvit runtime.
 
 ## Verification
 
@@ -38,6 +38,8 @@ The local preview opens on Vite. The current demo UI is a browser preview of the
 npm test
 npm run typecheck
 npm run build
+npm run e2e:api
+npm run e2e:local
 npm audit --omit=dev
 ```
 
@@ -45,6 +47,7 @@ Devvit upload/playtest requires a logged-in Devvit CLI:
 
 ```bash
 npx devvit login
+npm run e2e:auth
 npm run devvit:upload
 npm run devvit:playtest
 ```
