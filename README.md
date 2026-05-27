@@ -15,6 +15,7 @@ Moderators often need consistency more than another classifier. This app lets a 
 - Manual decision capture through a Devvit menu/form path.
 - Subreddit-local precedent records with retention metadata.
 - Transparent matching by rule tag, report family, and keywords.
+- Optional **semantic matching**: when an `openaiApiKey` is configured, decisions are embedded (OpenAI `text-embedding-3-small`) and ranked by cosine similarity *combined with* the transparent score — so a differently-worded case still surfaces the right precedent, while every match still shows its reasons. Falls back to keyword-only if no key is set.
 - Copyable moderator explanation templates.
 - Devvit-compatible backend endpoints for Redis persistence and scheduler cleanup.
 - A polished responsive command surface for demo and judging.

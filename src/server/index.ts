@@ -11,6 +11,12 @@ import {
   createDecisionRecord,
   matchPrecedents,
 } from "../shared/memory";
+import {
+  decisionEmbeddingText,
+  hybridRank,
+  queryEmbeddingText,
+} from "../shared/embeddings";
+import { fetchEmbedding } from "./embeddings";
 import { fixtureQueueItems } from "../shared/fixtures";
 import type { DecisionInput, DecisionRecord, QueueItem } from "../shared/types";
 
@@ -56,6 +62,14 @@ async function saveDecision(record: DecisionRecord): Promise<void> {
   });
 }
 
+// Attach a semantic embedding to a decision before storage. Fails soft:
+// if embeddings are unavailable the record is stored without one and the
+// matcher transparently falls back to deterministic scoring for it.
+async function withEmbedding(record: DecisionRecord): Promise<DecisionRecord> {
+  const embedding = await fetchEmbedding(decisionEmbeddingText(record));
+  return embedding ? { ...record, embedding } : record;
+}
+
 function queueFromRequest(input: Partial<MenuItemRequest>): QueueItem {
   const targetId = input.targetId ?? "unknown-target";
   return {
@@ -97,7 +111,7 @@ app.post("/api/decisions", async (c) => {
   }
 
   try {
-    await saveDecision(record);
+    await saveDecision(await withEmbedding(record));
   } catch (error) {
     return c.json(
       {
@@ -126,7 +140,8 @@ app.post("/api/match", async (c) => {
     );
   }
 
-  return c.json({ matches: matchPrecedents(item, decisions, 3) });
+  const queryEmbedding = await fetchEmbedding(queryEmbeddingText(item));
+  return c.json({ matches: hybridRank(item, decisions, queryEmbedding, 3) });
 });
 
 app.post("/internal/menu/capture-decision", async (c) => {
@@ -185,7 +200,7 @@ app.post("/internal/form/capture-decision-submit", async (c) => {
       actorLabel: input.actorLabel || "mod-team",
       source: "manual",
     });
-    await saveDecision(record);
+    await saveDecision(await withEmbedding(record));
   } catch (error) {
     return c.json<UiResponse>({
       showToast: {
@@ -240,7 +255,7 @@ app.post("/internal/triggers/mod-action", async (c) => {
       retentionDays: 30,
       source: "onModAction",
     });
-    await saveDecision(record);
+    await saveDecision(await withEmbedding(record));
   } catch (error) {
     console.error(
       "mod-action trigger could not persist decision:",

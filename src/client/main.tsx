@@ -12,9 +12,17 @@ import {
   ShieldCheck,
   Sparkles,
 } from "lucide-react";
-import { fixtureDecisions, fixtureQueueItems, fixtureRetention } from "../shared/fixtures";
+import {
+  fixtureDecisions,
+  fixtureQueueItems,
+  fixtureRetention,
+} from "../shared/fixtures";
 import { createDecisionRecord, matchPrecedents } from "../shared/memory";
-import type { DecisionOutcome, DecisionRecord, QueueItem } from "../shared/types";
+import type {
+  DecisionOutcome,
+  DecisionRecord,
+  MatchResult,
+} from "../shared/types";
 import "./styles.css";
 
 const STORAGE_KEY = "mdm-decisions-v1";
@@ -36,46 +44,109 @@ function outcomeLabel(outcome: DecisionOutcome): string {
 
 function App() {
   const [queueId, setQueueId] = React.useState(fixtureQueueItems[0].id);
-  const [decisions, setDecisions] = React.useState<DecisionRecord[]>(loadDecisions);
+  const [decisions, setDecisions] =
+    React.useState<DecisionRecord[]>(loadDecisions);
   const [copied, setCopied] = React.useState("");
   const [actionStatus, setActionStatus] = React.useState("");
   const [formError, setFormError] = React.useState("");
   const [form, setForm] = React.useState({
     ruleTag: "legal-advice",
     outcome: "escalated" as DecisionOutcome,
-    summary: "Escalated because the post asks for a legal outcome but can be reframed as a process question.",
-    template: "A senior moderator will review this because it is close to our legal-advice boundary. Please keep the question process-focused.",
+    summary:
+      "Escalated because the post asks for a legal outcome but can be reframed as a process question.",
+    template:
+      "A senior moderator will review this because it is close to our legal-advice boundary. Please keep the question process-focused.",
     keywords: "legal-advice jurisdiction workplace process",
   });
 
-  const activeItem = fixtureQueueItems.find((item) => item.id === queueId) ?? fixtureQueueItems[0];
-  const matches = React.useMemo(() => matchPrecedents(activeItem, decisions, 3), [activeItem, decisions]);
+  const activeItem =
+    fixtureQueueItems.find((item) => item.id === queueId) ??
+    fixtureQueueItems[0];
+  const [matches, setMatches] = React.useState<MatchResult[]>(() =>
+    matchPrecedents(activeItem, decisions, 3),
+  );
+  const [refreshKey, setRefreshKey] = React.useState(0);
 
   React.useEffect(() => {
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(decisions));
   }, [decisions]);
 
+  // Show deterministic matches instantly, then upgrade to the server's
+  // semantic (embedding-backed) ranking when running live inside Devvit.
+  // Any fetch failure (e.g. the offline Vite preview) keeps the local result.
+  React.useEffect(() => {
+    setMatches(matchPrecedents(activeItem, decisions, 3));
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch("/api/match", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(activeItem),
+        });
+        if (!res.ok) return;
+        const data = (await res.json()) as { matches?: MatchResult[] };
+        if (
+          !cancelled &&
+          Array.isArray(data.matches) &&
+          data.matches.length > 0
+        ) {
+          setMatches(data.matches);
+        }
+      } catch {
+        /* offline preview: keep the local deterministic matches */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [activeItem, decisions, refreshKey]);
+
   function captureDecision(event: React.FormEvent) {
     event.preventDefault();
     setFormError("");
+    const input = {
+      thingId: activeItem.id,
+      thingType: activeItem.thingType,
+      ruleTag: form.ruleTag,
+      outcome: form.outcome,
+      summary: form.summary,
+      template: form.template,
+      keywords: form.keywords,
+      retentionDays: fixtureRetention.days,
+      actorLabel: "demo-mod",
+      source: "manual" as const,
+    };
+    let record: DecisionRecord;
     try {
-      const record = createDecisionRecord({
-        thingId: activeItem.id,
-        thingType: activeItem.thingType,
-        ruleTag: form.ruleTag,
-        outcome: form.outcome,
-        summary: form.summary,
-        template: form.template,
-        keywords: form.keywords,
-        retentionDays: fixtureRetention.days,
-        actorLabel: "demo-mod",
-        source: "manual",
-      });
-      setDecisions((current) => [record, ...current]);
-      setActionStatus("Decision saved to local demo memory.");
+      record = createDecisionRecord(input);
     } catch (error) {
-      setFormError(error instanceof Error ? error.message : "Decision could not be saved.");
+      setFormError(
+        error instanceof Error ? error.message : "Decision could not be saved.",
+      );
+      return;
     }
+    setDecisions((current) => [record, ...current]);
+    setActionStatus("Decision saved to local demo memory.");
+    // When live inside Devvit, also persist to Redis with a semantic
+    // embedding, then re-run the match so the new precedent is searchable.
+    void (async () => {
+      try {
+        const res = await fetch("/api/decisions", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(input),
+        });
+        if (res.ok) {
+          setActionStatus(
+            "Decision saved to Redis with a semantic embedding for similarity search.",
+          );
+          setRefreshKey((key) => key + 1);
+        }
+      } catch {
+        /* offline preview: local memory only */
+      }
+    })();
   }
 
   async function copyTemplate(record: DecisionRecord) {
@@ -85,7 +156,9 @@ function App() {
       setActionStatus("Template copied to clipboard.");
       window.setTimeout(() => setCopied(""), 1500);
     } catch {
-      setActionStatus("Clipboard is unavailable in this browser. Select the template text from the card.");
+      setActionStatus(
+        "Clipboard is unavailable in this browser. Select the template text from the card.",
+      );
     }
   }
 
@@ -93,7 +166,9 @@ function App() {
     <main className="app-shell">
       <nav className="topbar" aria-label="Product">
         <div className="brand-lockup">
-          <span className="brand-mark"><ShieldCheck size={18} /></span>
+          <span className="brand-mark">
+            <ShieldCheck size={18} />
+          </span>
           <span>Decision Memory</span>
         </div>
         <div className="nav-links">
@@ -101,20 +176,29 @@ function App() {
           <a href="#capture">Capture</a>
           <a href="#integration">Devvit</a>
         </div>
-        <span className="status-pill"><Database size={14} /> Fixture demo data</span>
+        <span className="status-pill">
+          <Database size={14} /> Fixture demo data
+        </span>
       </nav>
 
       <section className="hero" id="workflow">
         <div className="hero-copy">
-          <span className="eyebrow"><Sparkles size={15} /> Devvit mod tool</span>
+          <span className="eyebrow">
+            <Sparkles size={15} /> Devvit mod tool
+          </span>
           <h1>Mods need precedent, not another classifier.</h1>
           <p>
-            A retention-aware memory layer for rule-heavy communities. Capture why a borderline
-            item was handled a certain way, then surface similar decisions for the next moderator.
+            A retention-aware memory layer for rule-heavy communities. Capture
+            why a borderline item was handled a certain way, then surface
+            similar decisions for the next moderator.
           </p>
           <div className="hero-actions">
-            <a className="primary-action" href="#capture"><Plus size={17} /> Capture decision</a>
-            <a className="secondary-action" href="#integration"><GitBranch size={17} /> View Devvit path</a>
+            <a className="primary-action" href="#capture">
+              <Plus size={17} /> Capture decision
+            </a>
+            <a className="secondary-action" href="#integration">
+              <GitBranch size={17} /> View Devvit path
+            </a>
           </div>
         </div>
 
@@ -123,13 +207,17 @@ function App() {
             <Search size={22} />
             <span>Queue item</span>
           </div>
-          <div className="pipeline-line"><span /></div>
+          <div className="pipeline-line">
+            <span />
+          </div>
           <div className="pipeline-core">
             <div className="core-pulse" />
             <ShieldCheck size={34} />
             <strong>Rule memory</strong>
           </div>
-          <div className="pipeline-line"><span /></div>
+          <div className="pipeline-line">
+            <span />
+          </div>
           <div className="pipeline-node destination">
             <ClipboardCopy size={22} />
             <span>Precedents</span>
@@ -137,7 +225,10 @@ function App() {
         </div>
       </section>
 
-      <section className="workspace" aria-label="Moderator decision memory workspace">
+      <section
+        className="workspace"
+        aria-label="Moderator decision memory workspace"
+      >
         <aside className="queue-panel">
           <div className="section-heading">
             <span>Pending review</span>
@@ -169,7 +260,9 @@ function App() {
               <p>{activeItem.body}</p>
             </div>
             <div className="signals">
-              {activeItem.ruleSignals.map((signal) => <span key={signal}>{signal}</span>)}
+              {activeItem.ruleSignals.map((signal) => (
+                <span key={signal}>{signal}</span>
+              ))}
             </div>
           </article>
 
@@ -181,20 +274,29 @@ function App() {
                   required
                   maxLength={40}
                   value={form.ruleTag}
-                  onChange={(e) => setForm({ ...form, ruleTag: e.target.value })}
+                  onChange={(e) =>
+                    setForm({ ...form, ruleTag: e.target.value })
+                  }
                 />
               </label>
               <label>
                 Outcome
                 <select
                   value={form.outcome}
-                  onChange={(e) => setForm({ ...form, outcome: e.target.value as DecisionOutcome })}
+                  onChange={(e) =>
+                    setForm({
+                      ...form,
+                      outcome: e.target.value as DecisionOutcome,
+                    })
+                  }
                 >
                   <option value="approved">Approved</option>
                   <option value="removed">Removed</option>
                   <option value="locked">Locked</option>
                   <option value="escalated">Escalated</option>
-                  <option value="needs-second-review">Needs second review</option>
+                  <option value="needs-second-review">
+                    Needs second review
+                  </option>
                 </select>
               </label>
             </div>
@@ -224,9 +326,15 @@ function App() {
                 onChange={(e) => setForm({ ...form, keywords: e.target.value })}
               />
             </label>
-            <button className="submit-button" type="submit"><Plus size={17} /> Save to memory</button>
+            <button className="submit-button" type="submit">
+              <Plus size={17} /> Save to memory
+            </button>
             <div className="form-feedback" aria-live="polite">
-              {formError ? <span className="feedback-error">{formError}</span> : actionStatus}
+              {formError ? (
+                <span className="feedback-error">{formError}</span>
+              ) : (
+                actionStatus
+              )}
             </div>
           </form>
         </section>
@@ -239,16 +347,28 @@ function App() {
           {matches.map(({ decision, score, reasons }) => (
             <article className="precedent-card" key={decision.id}>
               <div className="precedent-top">
-                <span className={`outcome outcome-${decision.outcome}`}>{outcomeLabel(decision.outcome)}</span>
+                <span className={`outcome outcome-${decision.outcome}`}>
+                  {outcomeLabel(decision.outcome)}
+                </span>
                 <strong>{score}</strong>
               </div>
               <h3>{decision.ruleTag}</h3>
               <p>{decision.summary}</p>
               <div className="reason-list">
-                {reasons.map((reason) => <span key={reason}>{reason}</span>)}
+                {reasons.map((reason) => (
+                  <span key={reason}>{reason}</span>
+                ))}
               </div>
-              <button className="copy-button" type="button" onClick={() => copyTemplate(decision)}>
-                {copied === decision.id ? <CheckCircle2 size={16} /> : <ClipboardCopy size={16} />}
+              <button
+                className="copy-button"
+                type="button"
+                onClick={() => copyTemplate(decision)}
+              >
+                {copied === decision.id ? (
+                  <CheckCircle2 size={16} />
+                ) : (
+                  <ClipboardCopy size={16} />
+                )}
                 {copied === decision.id ? "Copied" : "Copy template"}
               </button>
             </article>
@@ -258,25 +378,54 @@ function App() {
 
       <section className="integration" id="integration">
         <div>
-          <span className="eyebrow"><Clock3 size={15} /> Real Devvit path</span>
-          <h2>Manual capture first. Optional mod-action ingestion after proof.</h2>
+          <span className="eyebrow">
+            <Clock3 size={15} /> Real Devvit path
+          </span>
+          <h2>
+            Manual capture first. Optional mod-action ingestion after proof.
+          </h2>
           <p>
-            The app is designed around Devvit menu actions, forms, Redis, and scheduler cleanup.
-            `onModAction` is implemented as a conservative optional path, not a demo dependency.
+            The app is designed around Devvit menu actions, forms, Redis, and
+            scheduler cleanup. `onModAction` is implemented as a conservative
+            optional path, not a demo dependency.
           </p>
         </div>
         <div className="integration-grid">
-          <Fact icon={<ShieldCheck />} label="Moderator control" value="Advisory precedents only" />
-          <Fact icon={<Database />} label="Storage" value="Redis per installation" />
-          <Fact icon={<Clock3 />} label="Retention" value={`${fixtureRetention.days} day default cleanup`} />
-          <Fact icon={<AlertTriangle />} label="Privacy" value="No raw removed-content import" />
+          <Fact
+            icon={<ShieldCheck />}
+            label="Moderator control"
+            value="Advisory precedents only"
+          />
+          <Fact
+            icon={<Database />}
+            label="Storage"
+            value="Redis per installation"
+          />
+          <Fact
+            icon={<Clock3 />}
+            label="Retention"
+            value={`${fixtureRetention.days} day default cleanup`}
+          />
+          <Fact
+            icon={<AlertTriangle />}
+            label="Privacy"
+            value="No raw removed-content import"
+          />
         </div>
       </section>
     </main>
   );
 }
 
-function Fact({ icon, label, value }: { icon: React.ReactNode; label: string; value: string }) {
+function Fact({
+  icon,
+  label,
+  value,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  value: string;
+}) {
   return (
     <div className="fact">
       <span>{icon}</span>

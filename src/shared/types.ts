@@ -22,6 +22,7 @@ export interface DecisionRecord {
   expiresAt: string;
   actorLabel: string;
   source: DecisionSource;
+  embedding?: number[];
 }
 
 export interface QueueItem {
@@ -60,4 +61,5 @@ export interface MatchResult {
   decision: DecisionRecord;
   score: number;
   reasons: string[];
+  semantic?: number;
 }

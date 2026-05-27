@@ -18,6 +18,11 @@
     "reddit": {
       "enable": true,
       "scope": "moderator"
+    },
+    "http": {
+      "domains": [
+        "api.openai.com"
+      ]
     }
   },
   "menu": {
@@ -26,14 +31,21 @@
         "label": "Capture decision memory",
         "description": "Save a precedent with rule tag, outcome, and explanation template.",
         "forUserType": "moderator",
-        "location": ["post", "comment"],
+        "location": [
+          "post",
+          "comment"
+        ],
         "endpoint": "/internal/menu/capture-decision"
       },
       {
         "label": "Show decision precedents",
         "description": "Open the decision memory app for similar prior cases.",
         "forUserType": "moderator",
-        "location": ["post", "comment", "subreddit"],
+        "location": [
+          "post",
+          "comment",
+          "subreddit"
+        ],
         "endpoint": "/internal/menu/show-precedents"
       }
     ]
@@ -58,5 +70,15 @@
   },
   "dev": {
     "subreddit": "modmemoryx_dev"
+  },
+  "settings": {
+    "global": {
+      "openaiApiKey": {
+        "type": "string",
+        "label": "OpenAI API key (enables semantic precedent matching)",
+        "helpText": "Used server-side to embed decisions for similarity search. Leave blank to use keyword-only matching.",
+        "isSecret": true
+      }
+    }
   }
 }
