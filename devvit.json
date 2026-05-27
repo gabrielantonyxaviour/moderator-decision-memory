@@ -28,6 +28,15 @@
   "menu": {
     "items": [
       {
+        "label": "Create Decision Memory board",
+        "description": "Create the interactive precedent board post for this subreddit.",
+        "forUserType": "moderator",
+        "location": [
+          "subreddit"
+        ],
+        "endpoint": "/internal/menu/create-post"
+      },
+      {
         "label": "Capture decision memory",
         "description": "Save a precedent with rule tag, outcome, and explanation template.",
         "forUserType": "moderator",

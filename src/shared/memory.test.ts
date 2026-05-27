@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { fixtureDecisions, fixtureQueueItems } from "./fixtures";
-import { cleanupExpired, createDecisionRecord, matchPrecedents } from "./memory";
+import {
+  cleanupExpired,
+  createDecisionRecord,
+  matchPrecedents,
+} from "./memory";
 
 describe("decision memory matching", () => {
   it("surfaces transparent precedents for a borderline legal item", () => {
@@ -20,7 +24,8 @@ describe("decision memory matching", () => {
         ruleTag: "Legal Advice",
         outcome: "escalated",
         summary: "Needs a senior mod because the rule boundary is unclear.",
-        template: "A senior moderator will review this because it is close to our legal-advice rule.",
+        template:
+          "A senior moderator will review this because it is close to our legal-advice rule.",
         keywords: "legal advice boundary senior",
         retentionDays: 10,
       },
@@ -33,7 +38,10 @@ describe("decision memory matching", () => {
   });
 
   it("separates expired records for scheduler cleanup", () => {
-    const { active, expired } = cleanupExpired(fixtureDecisions, new Date("2026-07-01T00:00:00.000Z"));
+    const { active, expired } = cleanupExpired(
+      fixtureDecisions,
+      new Date("2026-07-01T00:00:00.000Z"),
+    );
 
     expect(active).toHaveLength(0);
     expect(expired.length).toBeGreaterThan(0);

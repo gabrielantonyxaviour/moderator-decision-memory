@@ -1,5 +1,13 @@
 import { Hono } from "hono";
-import { redis, scheduler } from "@devvit/web/server";
+import {
+  context,
+  createServer,
+  getServerPort,
+  redis,
+  reddit,
+  scheduler,
+} from "@devvit/web/server";
+import { getRequestListener } from "@hono/node-server";
 import type {
   MenuItemRequest,
   TriggerResponse,
@@ -84,6 +92,123 @@ function queueFromRequest(input: Partial<MenuItemRequest>): QueueItem {
     source: "reddit",
   };
 }
+
+type QueueThing = {
+  id: string;
+  title?: string;
+  body?: string;
+  authorName?: string;
+  createdAt?: Date;
+  userReportReasons?: string[];
+  modReportReasons?: string[];
+};
+
+// Map a real Reddit mod-queue Post/Comment into the QueueItem shape the
+// matcher and UI use. No fixtures: title/body/author/reports are live.
+function queueItemFromThing(thing: QueueThing): QueueItem {
+  const isComment = thing.id.startsWith("t1_");
+  const reports = Array.from(
+    new Set(
+      [
+        ...(thing.userReportReasons ?? []),
+        ...(thing.modReportReasons ?? []),
+      ].filter((r): r is string => Boolean(r)),
+    ),
+  );
+  const author = thing.authorName ?? "unknown";
+  return {
+    id: thing.id,
+    thingType: isComment ? "comment" : "post",
+    title: isComment
+      ? `Comment by u/${author}`
+      : thing.title || "(untitled post)",
+    body: thing.body ?? "",
+    authorLabel: author,
+    reports,
+    ruleSignals: [],
+    createdAt: (thing.createdAt ?? new Date()).toISOString(),
+    source: "reddit",
+  };
+}
+
+app.get("/api/queue", async (c) => {
+  const subredditName = context.subredditName;
+  if (!subredditName) {
+    return c.json({
+      items: [],
+      source: "none",
+      error: "No subreddit context.",
+    });
+  }
+  try {
+    const queueListing = await reddit.getModQueue({
+      subreddit: subredditName,
+      type: "all",
+      limit: 25,
+    });
+    const queueThings = (await queueListing.all()) as QueueThing[];
+    if (queueThings.length > 0) {
+      return c.json({
+        items: queueThings.map(queueItemFromThing),
+        source: "reported",
+        subreddit: subredditName,
+      });
+    }
+    // No reported items — show recent posts for proactive review.
+    const newListing = await reddit.getNewPosts({
+      subredditName,
+      limit: 15,
+    });
+    const newThings = (await newListing.all()) as QueueThing[];
+    return c.json({
+      items: newThings
+        .filter((t) => !t.title?.startsWith("Decision Memory"))
+        .map(queueItemFromThing),
+      source: "recent",
+      subreddit: subredditName,
+    });
+  } catch (error) {
+    return c.json({ items: [], source: "error", error: errorMessage(error) });
+  }
+});
+
+app.post("/api/act", async (c) => {
+  const { thingId, action, decision } = await c.req.json<{
+    thingId: string;
+    action: "approve" | "remove";
+    decision?: CaptureFormRequest;
+  }>();
+
+  try {
+    if (action === "approve") {
+      await reddit.approve(thingId as `t1_${string}` | `t3_${string}`);
+    } else if (action === "remove") {
+      await reddit.remove(thingId as `t1_${string}` | `t3_${string}`, false);
+    } else {
+      return c.json({ error: "Unknown action." }, 400);
+    }
+  } catch (error) {
+    return c.json(
+      { error: `Reddit action failed: ${errorMessage(error)}` },
+      502,
+    );
+  }
+
+  let record: DecisionRecord | undefined;
+  if (decision) {
+    try {
+      record = createDecisionRecord({ ...decision, thingId, source: "manual" });
+      await saveDecision(await withEmbedding(record));
+    } catch (error) {
+      return c.json({
+        ok: true,
+        actioned: action,
+        recordError: errorMessage(error),
+      });
+    }
+  }
+  return c.json({ ok: true, actioned: action, record });
+});
 
 app.get("/api/health", (c) =>
   c.json({ ok: true, app: "moderator-decision-memory" }),
@@ -299,5 +424,33 @@ app.post("/internal/menu/schedule-retention-cleanup", async (c) => {
     },
   });
 });
+
+app.post("/internal/menu/create-post", async (c) => {
+  try {
+    const post = await reddit.submitCustomPost({
+      title: "Decision Memory — moderator precedent board",
+    });
+    return c.json<UiResponse>({
+      navigateTo: post.url,
+      showToast: {
+        text: "Decision Memory board created.",
+        appearance: "success",
+      },
+    });
+  } catch (error) {
+    return c.json<UiResponse>({
+      showToast: {
+        text: `Could not create board: ${storageErrorMessage(error)}`,
+        appearance: "neutral",
+      },
+    });
+  }
+});
+
+// Devvit's createServer expects a Node request listener; bridge Hono's
+// fetch handler and listen on the port Devvit assigns. Without this the
+// app server never starts and every endpoint returns "fetch failed".
+const server = createServer(getRequestListener(app.fetch));
+server.listen(getServerPort());
 
 export default app;

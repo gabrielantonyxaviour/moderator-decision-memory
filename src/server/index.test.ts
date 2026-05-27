@@ -12,7 +12,9 @@ const devvitMocks = vi.hoisted(() => {
       },
       async hSet(key: string, entries: Record<string, string>) {
         const hash = hashes.get(key) ?? new Map<string, string>();
-        Object.entries(entries).forEach(([field, value]) => hash.set(field, value));
+        Object.entries(entries).forEach(([field, value]) =>
+          hash.set(field, value),
+        );
         hashes.set(key, hash);
       },
       async hDel(key: string, fields: string | string[]) {
@@ -39,6 +41,22 @@ const devvitMocks = vi.hoisted(() => {
 vi.mock("@devvit/web/server", () => ({
   redis: devvitMocks.redis,
   scheduler: devvitMocks.scheduler,
+  context: { subredditName: "test_sub" },
+  reddit: {
+    getModQueue: vi.fn(async () => ({ all: async () => [] })),
+    approve: vi.fn(async () => {}),
+    remove: vi.fn(async () => {}),
+    submitCustomPost: vi.fn(async () => ({
+      url: "https://reddit.com/r/test/comments/abc/test",
+    })),
+  },
+  settings: { get: vi.fn(async () => null) },
+  createServer: vi.fn(() => ({ listen: vi.fn() })),
+  getServerPort: vi.fn(() => 3000),
+}));
+
+vi.mock("@hono/node-server", () => ({
+  getRequestListener: vi.fn((fetch: unknown) => fetch),
 }));
 
 import app from "./index";
@@ -49,7 +67,8 @@ const validDecision = {
   ruleTag: "legal-advice",
   outcome: "escalated",
   summary: "Escalated because the post asks for a legal outcome.",
-  template: "A senior moderator will review this because it is close to our legal-advice rule.",
+  template:
+    "A senior moderator will review this because it is close to our legal-advice rule.",
   keywords: "legal-advice jurisdiction process",
   retentionDays: 30,
 };
@@ -98,17 +117,22 @@ describe("decision memory API", () => {
     });
 
     expect(matchResponse.status).toBe(200);
-    const body = (await matchResponse.json()) as { matches: Array<{ score: number; reasons: string[] }> };
+    const body = (await matchResponse.json()) as {
+      matches: Array<{ score: number; reasons: string[] }>;
+    };
     expect(body.matches[0].score).toBeGreaterThan(0);
     expect(body.matches[0].reasons.join(" ")).toContain("same rule tag");
   });
 
   it("can schedule retention cleanup from the moderator menu endpoint", async () => {
-    const response = await app.request("http://localhost/internal/menu/schedule-retention-cleanup", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({}),
-    });
+    const response = await app.request(
+      "http://localhost/internal/menu/schedule-retention-cleanup",
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({}),
+      },
+    );
 
     expect(response.status).toBe(200);
     expect(devvitMocks.scheduler.runJob).toHaveBeenCalledWith(
