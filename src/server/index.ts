@@ -1,8 +1,16 @@
 import { Hono } from "hono";
 import { redis, scheduler } from "@devvit/web/server";
-import type { MenuItemRequest, TriggerResponse, UiResponse } from "@devvit/web/shared";
+import type {
+  MenuItemRequest,
+  TriggerResponse,
+  UiResponse,
+} from "@devvit/web/shared";
 import type { TaskRequest, TaskResponse } from "@devvit/web/server";
-import { cleanupExpired, createDecisionRecord, matchPrecedents } from "../shared/memory";
+import {
+  cleanupExpired,
+  createDecisionRecord,
+  matchPrecedents,
+} from "../shared/memory";
 import { fixtureQueueItems } from "../shared/fixtures";
 import type { DecisionInput, DecisionRecord, QueueItem } from "../shared/types";
 
@@ -43,7 +51,9 @@ async function listDecisions(): Promise<DecisionRecord[]> {
 
 async function saveDecision(record: DecisionRecord): Promise<void> {
   await redis.hSet(DECISION_HASH, { [record.id]: JSON.stringify(record) });
-  await redis.hSet(`rule:${record.ruleTag}:decisions`, { [record.id]: record.createdAt });
+  await redis.hSet(`rule:${record.ruleTag}:decisions`, {
+    [record.id]: record.createdAt,
+  });
 }
 
 function queueFromRequest(input: Partial<MenuItemRequest>): QueueItem {
@@ -61,7 +71,9 @@ function queueFromRequest(input: Partial<MenuItemRequest>): QueueItem {
   };
 }
 
-app.get("/api/health", (c) => c.json({ ok: true, app: "moderator-decision-memory" }));
+app.get("/api/health", (c) =>
+  c.json({ ok: true, app: "moderator-decision-memory" }),
+);
 
 app.get("/api/demo-state", async (c) => {
   const decisions = await listDecisions().catch(() => []);
@@ -78,13 +90,22 @@ app.post("/api/decisions", async (c) => {
   try {
     record = createDecisionRecord(input);
   } catch (error) {
-    return c.json({ error: "Invalid decision input.", detail: errorMessage(error) }, 400);
+    return c.json(
+      { error: "Invalid decision input.", detail: errorMessage(error) },
+      400,
+    );
   }
 
   try {
     await saveDecision(record);
   } catch (error) {
-    return c.json({ error: "Decision storage unavailable.", detail: storageErrorMessage(error) }, 503);
+    return c.json(
+      {
+        error: "Decision storage unavailable.",
+        detail: storageErrorMessage(error),
+      },
+      503,
+    );
   }
 
   return c.json({ record }, 201);
@@ -96,7 +117,13 @@ app.post("/api/match", async (c) => {
   try {
     decisions = await listDecisions();
   } catch (error) {
-    return c.json({ error: "Decision storage unavailable.", detail: storageErrorMessage(error) }, 503);
+    return c.json(
+      {
+        error: "Decision storage unavailable.",
+        detail: storageErrorMessage(error),
+      },
+      503,
+    );
   }
 
   return c.json({ matches: matchPrecedents(item, decisions, 3) });
@@ -116,12 +143,24 @@ app.post("/internal/menu/capture-decision", async (c) => {
         cancelLabel: "Cancel",
         fields: [
           { type: "string", name: "thingId", label: "Reddit thing id" },
-          { type: "string", name: "thingType", label: "Target type: post or comment" },
+          {
+            type: "string",
+            name: "thingType",
+            label: "Target type: post or comment",
+          },
           { type: "string", name: "ruleTag", label: "Rule tag" },
           { type: "string", name: "outcome", label: "Outcome" },
           { type: "paragraph", name: "summary", label: "Decision summary" },
-          { type: "paragraph", name: "template", label: "Reusable explanation template" },
-          { type: "string", name: "keywords", label: "Match keywords, comma separated" },
+          {
+            type: "paragraph",
+            name: "template",
+            label: "Reusable explanation template",
+          },
+          {
+            type: "string",
+            name: "keywords",
+            label: "Match keywords, comma separated",
+          },
           { type: "number", name: "retentionDays", label: "Retention days" },
         ],
       },
@@ -179,22 +218,35 @@ app.post("/internal/menu/show-precedents", async (c) => {
 });
 
 app.post("/internal/triggers/mod-action", async (c) => {
-  const payload = await c.req.json<Record<string, unknown>>();
-  const action = String(payload.action ?? payload.type ?? "mod-action");
-  const targetId = String(payload.targetId ?? payload.postId ?? payload.commentId ?? `mod-action-${Date.now()}`);
-  const record = createDecisionRecord({
-    thingId: targetId,
-    thingType: targetId.startsWith("t1_") ? "comment" : "post",
-    ruleTag: action,
-    outcome: action.includes("approve") ? "approved" : "needs-second-review",
-    summary: `Captured platform mod action "${action}" for later moderator review.`,
-    template: "Review this automatically captured action and add the team's reusable explanation.",
-    keywords: [action, "mod-action"],
-    actorLabel: "platform-trigger",
-    retentionDays: 30,
-    source: "onModAction",
-  });
-  await saveDecision(record);
+  try {
+    const payload = await c.req.json<Record<string, unknown>>();
+    const action = String(payload.action ?? payload.type ?? "mod-action");
+    const targetId = String(
+      payload.targetId ??
+        payload.postId ??
+        payload.commentId ??
+        `mod-action-${Date.now()}`,
+    );
+    const record = createDecisionRecord({
+      thingId: targetId,
+      thingType: targetId.startsWith("t1_") ? "comment" : "post",
+      ruleTag: action,
+      outcome: action.includes("approve") ? "approved" : "needs-second-review",
+      summary: `Captured platform mod action "${action}" for later moderator review.`,
+      template:
+        "Review this automatically captured action and add the team's reusable explanation.",
+      keywords: [action, "mod-action"],
+      actorLabel: "platform-trigger",
+      retentionDays: 30,
+      source: "onModAction",
+    });
+    await saveDecision(record);
+  } catch (error) {
+    console.error(
+      "mod-action trigger could not persist decision:",
+      storageErrorMessage(error),
+    );
+  }
   return c.json<TriggerResponse>({ status: "ok" });
 });
 
@@ -203,11 +255,18 @@ app.post("/internal/scheduler/retention-cleanup", async (c) => {
   const decisions = await listDecisions();
   const { active, expired } = cleanupExpired(decisions);
   if (expired.length > 0) {
-    await redis.hDel(DECISION_HASH, expired.map((record) => record.id));
+    await redis.hDel(
+      DECISION_HASH,
+      expired.map((record) => record.id),
+    );
   }
   await redis.set(
     RETENTION_AUDIT,
-    JSON.stringify({ at: new Date().toISOString(), active: active.length, expired: expired.length }),
+    JSON.stringify({
+      at: new Date().toISOString(),
+      active: active.length,
+      expired: expired.length,
+    }),
   );
   return c.json<TaskResponse>({ status: "ok" });
 });

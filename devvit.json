@@ -11,7 +11,7 @@
     }
   },
   "server": {
-    "entry": "dist/server/server/index.js"
+    "entry": "server/index.js"
   },
   "permissions": {
     "redis": true,
@@ -55,5 +55,8 @@
   "scripts": {
     "build": "npm run devvit:build",
     "dev": "vite build --watch"
+  },
+  "dev": {
+    "subreddit": "modmemoryx_dev"
   }
 }

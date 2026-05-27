@@ -4,6 +4,12 @@ Devvit mod tool that gives Reddit moderator teams a searchable, retention-aware 
 
 Moderators often need consistency more than another classifier. This app lets a team capture why a post or comment was approved, removed, escalated, locked, or held for second review. When a similar queue item appears later, it surfaces prior precedents with transparent match reasons and reusable explanation templates.
 
+## Live on Reddit
+
+- **App listing:** https://developers.reddit.com/apps/modmemoryx
+- Built on **Devvit 0.13**. Uploaded, installed, and playtested on `r/modmemoryx_dev`; the live `onModAction` trigger was verified firing during a playtest session, and a defensive fix was applied to the trigger handler so it never raises an unhandled rejection on malformed events.
+- Submitted to the Devvit App Directory for review (apps that create custom posts require approval before public install).
+
 ## What It Proves
 
 - Manual decision capture through a Devvit menu/form path.
@@ -66,4 +72,4 @@ npm run devvit:playtest
 - `POST /api/decisions`
 - `POST /api/match`
 
-`onModAction` is intentionally optional. The primary launch path is app-mediated moderator capture, because that keeps the demo honest even when automatic mod action payloads need extra live verification.
+`onModAction` is wired and was verified firing live during playtest; its handler defensively swallows persistence errors so a malformed event can never crash the trigger. The primary launch path remains app-mediated moderator capture, which keeps the demo honest and deterministic.

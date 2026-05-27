@@ -1,6 +1,6 @@
 {
-  "name": "moderator-decision-memory",
-  "version": "0.1.0",
+  "name": "modmemoryx",
+  "version": "0.0.0",
   "private": true,
   "description": "Devvit mod tool that gives Reddit moderators searchable precedent memory for borderline decisions.",
   "scripts": {
@@ -11,29 +11,31 @@
     "e2e:local": "node scripts/e2e-local.mjs",
     "e2e:api": "node scripts/e2e-api-smoke.mjs",
     "e2e:auth": "node scripts/devvit-auth-preflight.mjs",
-    "devvit:build": "vite build && tsc -p tsconfig.server.json",
+    "devvit:build": "vite build && esbuild src/server/index.ts --bundle --platform=node --target=node20 --format=cjs --outfile=dist/server/server/index.js",
     "devvit:playtest": "devvit playtest",
     "devvit:upload": "devvit upload"
   },
   "dependencies": {
-    "@devvit/redis": "0.12.24",
-    "@devvit/web": "0.12.24",
+    "@devvit/redis": "0.13.0",
+    "@devvit/web": "0.13.0",
     "hono": "^4.10.7",
     "lucide-react": "^0.511.0",
     "react": "^19.2.0",
     "react-dom": "^19.2.0"
   },
   "devDependencies": {
-    "@devvit/start": "0.12.24",
+    "@devvit/start": "0.13.0",
     "@types/react": "^19.2.7",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^5.1.1",
     "playwright": "^1.60.0",
-    "typescript": "^5.9.3",
+    "typescript": "5.8.3",
     "vite": "^7.2.7",
     "vitest": "^4.0.15"
   },
   "overrides": {
     "protobufjs": "7.5.8"
-  }
+  },
+  "type": "module",
+  "license": "BSD-3-Clause"
 }
