@@ -726,3 +726,46 @@ textarea {
   padding: 3px 8px;
   border-radius: 999px;
 }
+
+/* Action result banner */
+.action-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 14px;
+  border-radius: 8px;
+  font-size: 0.84rem;
+  font-weight: 600;
+  margin-bottom: 14px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--line);
+  color: var(--muted);
+}
+.action-banner.success {
+  background: rgba(66, 240, 109, 0.06);
+  border-color: rgba(66, 240, 109, 0.25);
+  color: var(--green-2);
+}
+
+/* Hint below action buttons */
+.form-hint {
+  text-align: center;
+  font-size: 0.76rem;
+  color: var(--muted);
+  opacity: 0.7;
+  margin-top: -4px;
+  margin-bottom: 8px;
+}
+
+/* Make form caption feel more intentional */
+.form-caption {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--green-2);
+  font-size: 0.78rem;
+  font-weight: 700;
+  margin-bottom: 8px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}

@@ -28,20 +28,35 @@ function App() {
   const [matching, setMatching] = React.useState(false);
   const [busy, setBusy] = React.useState<Busy>("");
   const [copied, setCopied] = React.useState("");
-  const [status, setStatus] = React.useState("");
-  const [form, setForm] = React.useState({
-    ruleTag: "",
-    outcome: "removed" as DecisionOutcome,
-    summary: "",
-    template: "",
-    keywords: "",
-  });
-
-  const activeItem = queue.find((q) => q.id === selectedId) ?? null;
-
+  const [lastAction, setLastAction] = React.useState("");
+  const [totalRecorded, setTotalRecorded] = React.useState(0);
   const [queueSource, setQueueSource] = React.useState<
     "reported" | "recent" | "none"
   >("none");
+  const [form, setForm] = React.useState({
+    ruleTag: "",
+    outcome: "needs-second-review" as DecisionOutcome,
+    summary: "",
+    template: "",
+  });
+
+  const activeItem = queue.find((q) => q.id === selectedId) ?? null;
+  const hasReasoning = form.summary.trim().length > 0;
+
+  // Auto-fill rule tag from reports when selecting a new item.
+  React.useEffect(() => {
+    if (activeItem) {
+      setForm((f) => ({
+        ...f,
+        ruleTag:
+          activeItem.reports[0]?.toLowerCase().replace(/\s+/g, "-") ||
+          f.ruleTag,
+        outcome: "needs-second-review",
+        summary: "",
+        template: "",
+      }));
+    }
+  }, [activeItem?.id]);
 
   const loadQueue = React.useCallback(async () => {
     setLoading(true);
@@ -75,6 +90,7 @@ function App() {
     void loadQueue();
   }, [loadQueue]);
 
+  // Fetch precedents for the selected item.
   React.useEffect(() => {
     if (!activeItem) {
       setMatches([]);
@@ -106,9 +122,8 @@ function App() {
   async function act(action: "approve" | "remove") {
     if (!activeItem || busy) return;
     setBusy(action);
-    setStatus("");
-    const recordWhy = form.summary.trim();
-    const decision = recordWhy
+    setLastAction("");
+    const decision = hasReasoning
       ? {
           thingId: activeItem.id,
           thingType: activeItem.thingType,
@@ -117,7 +132,7 @@ function App() {
           outcome: form.outcome,
           summary: form.summary,
           template: form.template || form.summary,
-          keywords: form.keywords || form.ruleTag,
+          keywords: form.ruleTag,
           retentionDays: 90,
           actorLabel: "mod",
         }
@@ -130,23 +145,26 @@ function App() {
       });
       const data = (await res.json()) as { ok?: boolean; error?: string };
       if (!res.ok || !data.ok) {
-        setStatus(data.error ?? "Action failed.");
+        setLastAction(data.error ?? "Action failed.");
         return;
       }
-      setStatus(
-        `${action === "approve" ? "Approved" : "Removed"} u/${activeItem.authorLabel}'s ${activeItem.thingType}${decision ? " · decision recorded for the team" : ""}.`,
+      const verb = action === "approve" ? "Approved" : "Removed";
+      setLastAction(
+        decision
+          ? `${verb} and recorded — your reasoning is now a precedent for the team.`
+          : `${verb} — no reasoning recorded (the team won't see why).`,
       );
+      if (decision) setTotalRecorded((n) => n + 1);
       setQueue((q) => q.filter((it) => it.id !== activeItem.id));
       setSelectedId(null);
-      setForm((f) => ({
-        ...f,
+      setForm({
         ruleTag: "",
+        outcome: "needs-second-review",
         summary: "",
         template: "",
-        keywords: "",
-      }));
+      });
     } catch {
-      setStatus(
+      setLastAction(
         "Could not reach Reddit. Is the app installed with moderator permissions?",
       );
     } finally {
@@ -159,9 +177,7 @@ function App() {
       await navigator.clipboard.writeText(match.decision.template);
       setCopied(match.decision.id);
       window.setTimeout(() => setCopied(""), 1500);
-    } catch {
-      setStatus("Clipboard unavailable — select the template text manually.");
-    }
+    } catch {}
   }
 
   return (
@@ -174,12 +190,14 @@ function App() {
           <span>Decision Memory</span>
         </div>
         <span className={`status-pill ${live ? "live" : ""}`}>
-          <span className="live-dot" />{" "}
-          {live ? "Live mod queue" : "Connect inside a subreddit"}
+          <span className="live-dot" />
+          {live ? "Live" : "Connect inside a subreddit"}
+          {totalRecorded > 0 && <> · {totalRecorded} recorded</>}
         </span>
       </nav>
 
       <section className="workspace" aria-label="Moderator decision memory">
+        {/* ── Left: queue ── */}
         <aside className="queue-panel">
           <div className="section-heading">
             <span>
@@ -196,7 +214,7 @@ function App() {
             </small>
           </div>
           {loading ? (
-            <div className="empty-state">Loading your mod queue…</div>
+            <div className="empty-state">Loading…</div>
           ) : queue.length === 0 ? (
             <div className="empty-state">
               <Inbox size={26} />
@@ -208,7 +226,10 @@ function App() {
               <button
                 key={item.id}
                 className={`queue-item ${item.id === activeItem?.id ? "active" : ""}`}
-                onClick={() => setSelectedId(item.id)}
+                onClick={() => {
+                  setSelectedId(item.id);
+                  setLastAction("");
+                }}
                 type="button"
               >
                 <span className="queue-type">{item.thingType}</span>
@@ -223,7 +244,16 @@ function App() {
           )}
         </aside>
 
+        {/* ── Center: review + record + act ── */}
         <section className="review-panel">
+          {lastAction && !activeItem && (
+            <div
+              className={`action-banner ${lastAction.includes("recorded") ? "success" : ""}`}
+            >
+              <CheckCircle2 size={16} /> {lastAction}
+            </div>
+          )}
+
           {activeItem ? (
             <>
               <div className="section-heading">
@@ -245,41 +275,24 @@ function App() {
                 )}
               </article>
 
-              <div className="action-row">
-                <button
-                  className="approve-action"
-                  type="button"
-                  disabled={busy !== ""}
-                  onClick={() => act("approve")}
-                >
-                  <Check size={17} />{" "}
-                  {busy === "approve" ? "Approving…" : "Approve"}
-                </button>
-                <button
-                  className="remove-action"
-                  type="button"
-                  disabled={busy !== ""}
-                  onClick={() => act("remove")}
-                >
-                  <Trash2 size={17} />{" "}
-                  {busy === "remove" ? "Removing…" : "Remove"}
-                </button>
-              </div>
-
+              {/* Reasoning form ABOVE the action buttons — the natural flow:
+                  read item → record your reasoning → choose action.
+                  Action buttons adapt: "Approve + Record" when reasoning is filled. */}
               <form
                 className="capture-form"
                 onSubmit={(e) => e.preventDefault()}
                 noValidate
               >
                 <div className="form-caption">
-                  Record why (optional) — becomes a precedent for the next mod
+                  <ShieldCheck size={13} /> Record your reasoning — becomes a
+                  precedent for the next mod
                 </div>
                 <div className="form-row">
                   <label>
                     Rule tag
                     <input
                       maxLength={40}
-                      placeholder="e.g. spam, brigading, civility"
+                      placeholder="e.g. vote-manipulation, spam"
                       value={form.ruleTag}
                       onChange={(e) =>
                         setForm({ ...form, ruleTag: e.target.value })
@@ -308,10 +321,10 @@ function App() {
                   </label>
                 </div>
                 <label>
-                  Reasoning
+                  Why this call was made
                   <textarea
                     maxLength={320}
-                    placeholder="Why this call was made — the next mod sees this."
+                    placeholder="The next moderator who sees a case like this will read your reasoning."
                     value={form.summary}
                     onChange={(e) =>
                       setForm({ ...form, summary: e.target.value })
@@ -319,50 +332,103 @@ function App() {
                   />
                 </label>
                 <label>
-                  Reusable reply template
+                  Reusable reply to the user
                   <textarea
                     maxLength={420}
-                    placeholder="A message the team can reuse for this kind of case."
+                    placeholder="A message the team can copy-paste for this kind of case."
                     value={form.template}
                     onChange={(e) =>
                       setForm({ ...form, template: e.target.value })
                     }
                   />
                 </label>
-                <div className="form-feedback" aria-live="polite">
-                  {status}
-                </div>
               </form>
+
+              <div className="action-row">
+                <button
+                  className="approve-action"
+                  type="button"
+                  disabled={busy !== ""}
+                  onClick={() => act("approve")}
+                >
+                  <Check size={17} />
+                  {busy === "approve"
+                    ? "Approving…"
+                    : hasReasoning
+                      ? "Approve + Record"
+                      : "Approve"}
+                </button>
+                <button
+                  className="remove-action"
+                  type="button"
+                  disabled={busy !== ""}
+                  onClick={() => act("remove")}
+                >
+                  <Trash2 size={17} />
+                  {busy === "remove"
+                    ? "Removing…"
+                    : hasReasoning
+                      ? "Remove + Record"
+                      : "Remove"}
+                </button>
+              </div>
+              {!hasReasoning && (
+                <div className="form-hint">
+                  Fill in your reasoning above to save this decision as a
+                  precedent for the team.
+                </div>
+              )}
+              {lastAction && (
+                <div className="form-feedback" aria-live="polite">
+                  {lastAction}
+                </div>
+              )}
             </>
           ) : (
             <div className="empty-state tall">
               <ShieldCheck size={30} />
               <strong>
-                {queue.length
-                  ? "Select an item to review"
-                  : status || "No item selected"}
+                {queue.length ? "Select an item to review" : "Queue is clear"}
               </strong>
               <p>
                 {queue.length
-                  ? "Pick something from the queue to see how your team handled similar cases."
+                  ? "Pick something from the queue. You'll see how your team handled similar cases on the right."
                   : "When items hit your mod queue, they appear here with matching precedents."}
               </p>
             </div>
           )}
         </section>
 
+        {/* ── Right: precedents ── */}
         <aside className="precedent-panel">
           <div className="section-heading">
             <span>Similar past decisions</span>
             <small>{matching ? "…" : `${matches.length} found`}</small>
           </div>
           {!activeItem ? (
-            <div className="empty-state">Select an item to see precedents.</div>
+            <div className="empty-state">
+              <Sparkles size={20} />
+              <strong>Team memory</strong>
+              <p>
+                Every decision you record builds the team's memory. When a
+                similar case arrives, the tool surfaces past reasoning — even
+                when worded differently — so the team stays consistent.
+              </p>
+            </div>
           ) : matches.length === 0 ? (
             <div className="empty-state">
-              {matching
-                ? "Searching memory…"
-                : "No matching precedents yet. Your decisions build this."}
+              {matching ? (
+                "Searching memory…"
+              ) : (
+                <>
+                  <strong>No precedents yet</strong>
+                  <p>
+                    {totalRecorded === 0
+                      ? "Record your reasoning on the left when you approve or remove a post. Your first decision becomes the first precedent."
+                      : "No similar decisions found for this item. Different topics won't match — that's by design."}
+                  </p>
+                </>
+              )}
             </div>
           ) : (
             matches.map((match) => (
@@ -375,7 +441,7 @@ function App() {
                     match.semantic >= 0.3 && (
                       <span className="semantic-tag">
                         <Sparkles size={11} />{" "}
-                        {Math.round(match.semantic * 100)}%
+                        {Math.round(match.semantic * 100)}% match
                       </span>
                     )}
                 </div>
